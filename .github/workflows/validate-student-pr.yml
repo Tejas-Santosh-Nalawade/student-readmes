@@ -1,0 +1,75 @@
+name: Validate Student PR Template
+
+on:
+  pull_request:
+    paths:
+      - "students/*.yml"
+    types: [opened, edited, synchronize]
+
+jobs:
+  validate-template:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Validate YAML template
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const yaml = require('js-yaml');
+            const changedFiles = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            let errors = [];
+
+            for (const file of changedFiles.data) {
+              if (!file.filename.startsWith("students/")) {
+                errors.push(`❌ File must be inside the students/ folder: ${file.filename}`);
+                continue;
+              }
+              if (!file.filename.endsWith(".yml")) {
+                errors.push(`❌ File must be a .yml file: ${file.filename}`);
+                continue;
+              }
+
+              // Read YAML content
+              const content = fs.readFileSync(file.filename, 'utf8');
+              let data;
+              try {
+                data = yaml.load(content);
+              } catch (err) {
+                errors.push(`❌ Invalid YAML format in ${file.filename}: ${err.message}`);
+                continue;
+              }
+
+              // Required fields
+              const required = ['name','github_username','roll_no','branch','college','skills','dream_company'];
+              for (const field of required) {
+                if (!data[field]) {
+                  errors.push(`❌ Missing required field '${field}' in ${file.filename}`);
+                }
+              }
+
+              // Validate github_username format
+              if (data.github_username && !/^[a-z0-9-]+$/i.test(data.github_username)) {
+                errors.push(`❌ github_username must be alphanumeric (hyphens allowed) in ${file.filename}`);
+              }
+            }
+
+            if (errors.length > 0) {
+              const body = errors.join("\n");
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: `⚠️ **PR Validation Failed** ⚠️\n\n${body}`
+              });
+              core.setFailed("PR validation failed. See comment for details.");
+            } else {
+              console.log("✅ All student templates are valid!");
+            }

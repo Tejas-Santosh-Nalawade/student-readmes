@@ -1,0 +1,41 @@
+name: Update Central README
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  update-readme:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Generate Contributors & Showcase
+        run: |
+          echo "<!-- CONTRIBUTORS-LIST:START -->" > contributors.txt
+          echo "<!-- SHOWCASE-LIST:START -->" > showcase.txt
+
+          for file in students/*.yml; do
+              username=$(basename "$file" .yml)
+              echo "- [@$username](./students/$username.yml)" >> contributors.txt
+              head -n 15 "students/$file" >> showcase.txt
+              echo -e "\n---\n" >> showcase.txt
+          done
+
+          echo "<!-- CONTRIBUTORS-LIST:END -->" >> contributors.txt
+          echo "<!-- SHOWCASE-LIST:END -->" >> showcase.txt
+
+          awk 'NR==1,/<!-- CONTRIBUTORS-LIST:START -->/ {print; if (/<!-- CONTRIBUTORS-LIST:START -->/) {while((getline line < "contributors.txt")>0) print line;}} /<!-- CONTRIBUTORS-LIST:END -->/,0' README.md > README.tmp
+          mv README.tmp README.md
+
+          awk 'NR==1,/<!-- SHOWCASE-LIST:START -->/ {print; if (/<!-- SHOWCASE-LIST:START -->/) {while((getline line < "showcase.txt")>0) print line;}} /<!-- SHOWCASE-LIST:END -->/,0' README.md > README.tmp
+          mv README.tmp README.md
+
+      - name: Commit & push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "chore: update contributors & showcase" || echo "No changes"
+          git push

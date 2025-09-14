@@ -1,0 +1,60 @@
+name: Create Personal Repo and README
+
+on:
+  pull_request:
+    paths:
+      - "students/*.yml"
+    types: [closed]
+
+jobs:
+  create-personal-repo:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+
+      - name: Install dependencies
+        run: pip install PyGithub pyyaml
+
+      - name: Create personal repo & README
+        env:
+          GITHUB_TOKEN: ${{ secrets.STUDENT_PAT }}
+        run: |
+          import os, yaml
+          from github import Github
+
+          g = Github(os.environ["GITHUB_TOKEN"])
+
+          files = [f for f in os.listdir("students") if f.endswith(".yml")]
+          for f in files:
+              with open(f"students/{f}", "r") as file:
+                  data = yaml.safe_load(file)
+
+              username = data["github_username"]
+              repo_name = f"{username}-profile"
+
+              user = g.get_user()
+              try:
+                  repo = user.create_repo(repo_name, description="My Profile README", private=False)
+                  print(f"Repo created: {repo.full_name}")
+              except:
+                  repo = g.get_user().get_repo(repo_name)
+                  print(f"Repo already exists: {repo.full_name}")
+
+              readme_content = f"# Hi, I am {data['name']} 👋\n\n## 🎓 About Me\n- Roll No: {data['roll_no']}\n- Branch: {data['branch']}\n- College: {data['college']}\n\n## 💡 Skills\n"
+              for skill in data["skills"]:
+                  readme_content += f"- {skill}\n"
+              readme_content += f"\n## 🌟 Dream Company\n- {data['dream_company']}\n"
+
+              try:
+                  repo.create_file("README.md", "Initial profile README", readme_content)
+                  print(f"README created in {repo_name}")
+              except:
+                  contents = repo.get_contents("README.md")
+                  repo.update_file(contents.path, "Update README", readme_content, contents.sha)
+                  print(f"README updated in {repo_name}")
